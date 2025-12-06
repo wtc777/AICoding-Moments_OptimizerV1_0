@@ -153,11 +153,25 @@
       headers,
       body: JSON.stringify(body)
     });
-    const data = await res.json();
+    const contentType = res.headers.get('content-type') || '';
+    const isJson = contentType.includes('application/json');
+    const rawText = await res.text();
+    let data = null;
+    if (isJson && rawText) {
+      try {
+        data = JSON.parse(rawText);
+      } catch (err) {
+        throw new Error('Invalid JSON response');
+      }
+    }
     if (!res.ok) {
-      const err = new Error(data?.error || 'Request failed');
+      const message = data?.error || data?.message || rawText?.slice(0, 200) || 'Request failed';
+      const err = new Error(message);
       err.code = data?.code;
       throw err;
+    }
+    if (!data || typeof data !== 'object') {
+      throw new Error('Invalid response format');
     }
     updateDebugPanel(data?.debug);
     const markdown = data.text || data.markdown || '';
