@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title data-i18n="dashboard.pageTitle" data-i18n-attr="textContent">Ops Control Dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="css/ops_dashboard.css">
+</head>
+<body>
+<!--
+Expected dashboard data structure:
+{
+  "summary": {
+    "totalParses": number,
+    "successRate": number,
+    "avgLatencyMs": number,
+    "tokensToday": number,
+    "costToday": number,
+    "activeUsers": number
+  },
+  "funnel": [
+    { "step": string, "count": number, "ratio": number }
+  ],
+  "segments": [
+    { "segment": string, "count": number, "desc": string }
+  ],
+  "tokens": { ... },
+  "activation": { ... },
+  "quotaWarnings": [ ... ],
+  "alerts": [ ... ]
+}
+-->
+<div class="page-wrap">
+<div class="dashboard">
+<!-- Header -->
+<header class="header">
+<div class="header-left">
+<div class="logo-mark">
+<span data-i18n="dashboard.logo">OPS</span>
+</div>
+<div class="header-title-block">
+<h1 data-i18n="dashboard.header.title">System Optimization Control Panel</h1>
+<p data-i18n="dashboard.header.subtitle">User Behavior | Performance | Token Cost | Quota | Alerts</p>
+</div>
+</div>
+<div class="header-controls">
+<span class="chip">
+<span class="icon-dot"></span>
+<span data-i18n="dashboard.header.status">System Online</span>
+</span>
+<a class="chip" href="/admin.html" data-i18n="dashboard.header.back">Back to Admin</a>
+<button class="chip" id="languageToggle" type="button" data-i18n="dashboard.lang.toggle">Switch</button>
+<div class="range-selector">
+<span class="tag active" data-range="today" data-i18n="dashboard.range.today">Today</span>
+<span class="tag" data-range="7d" data-i18n="dashboard.range.last7">Last 7 Days</span>
+<span class="tag" data-range="30d" data-i18n="dashboard.range.last30">Last 30 Days</span>
+</div>
+<div class="fake-input">
+<div class="date-display-group">
+<div class="fake-input-label" data-i18n="dashboard.range.label">Time Range</div>
+<div class="fake-input-value" data-i18n="dashboard.range.value">2025-12-05 00:00 - 23:59</div>
+</div>
+</div>
+</div>
+</header>
+<!-- KPI Cards -->
+    <section class="kpi-grid">
+        <div class="kpi-card">
+            <div class="kpi-inner">
+                <div class="kpi-label">
+                    <span data-i18n="dashboard.kpi.totalParses.label">Total Parses</span>
+                    <span class="label-sub" data-i18n="dashboard.kpi.totalParses.sub">vs Yesterday +12%</span>
+                </div>
+                <div class="kpi-value" id="kpi-total-parses">184</div>
+                <div class="kpi-sub">
+                    <span class="mini-bar">
+                        <span class="mini-bar-fill" style="width: 70%"></span>
+                    </span>
+                    <span class="kpi-trend up">+ 12%</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="kpi-card">
+            <div class="kpi-inner">
+                <div class="kpi-label">
+                    <span data-i18n="dashboard.kpi.successRate.label">Success Rate</span>
+                    <span class="label-sub text-success-light" data-i18n="dashboard.kpi.successRate.sub">Target &gt;= 98%</span>
+                </div>
+                <div class="kpi-value" id="kpi-success-rate">98.7%</div>
+                <div class="kpi-sub">
+                    <span>Failed: 3</span>
+                    <span class="kpi-trend up">+ 0.5%</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="kpi-card">
+            <div class="kpi-inner">
+                <div class="kpi-label">
+                    <span data-i18n="dashboard.kpi.avgLatency.label">Avg Latency</span>
+                    <span class="label-sub" data-i18n="dashboard.kpi.avgLatency.sub">P95: 3.1s</span>
+                </div>
+                <div class="kpi-value" id="kpi-avg-latency">2.4s</div>
+                <div class="kpi-sub">
+                    <span>Last Hour: 2.1s</span>
+                    <span class="kpi-trend down">- 0.3s</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="kpi-card">
+            <div class="kpi-inner">
+                <div class="kpi-label">
+                    <span data-i18n="dashboard.kpi.tokens.label">Token Usage</span>
+                    <span class="label-sub" data-i18n="dashboard.kpi.tokens.sub">Input / Output</span>
+                </div>
+                <div class="kpi-value" id="kpi-tokens-today">128,450</div>
+                <div class="kpi-sub">
+                    <span>Avg per req: 698</span>
+                    <span class="kpi-trend up">+ 8%</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="kpi-card">
+            <div class="kpi-inner">
+                <div class="kpi-label">
+                    <span data-i18n="dashboard.kpi.cost.label">Est. Cost</span>
+                    <span class="label-sub" data-i18n="dashboard.kpi.cost.sub">Current Pricing</span>
+                </div>
+                <div class="kpi-value" id="kpi-cost-today">$ 23.16</div>
+                <div class="kpi-sub">
+                    <span>Month Total: $ 326.4</span>
+                    <span class="kpi-trend up">+ 4.2%</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="kpi-card">
+            <div class="kpi-inner">
+                <div class="kpi-label">
+                    <span data-i18n="dashboard.kpi.activeUsers.label">Active Users</span>
+                    <span class="label-sub" data-i18n="dashboard.kpi.activeUsers.sub">With Actions</span>
+                </div>
+                <div class="kpi-value" id="kpi-active-users">42</div>
+                <div class="kpi-sub">
+                    <span>New: 9 | Active: 7</span>
+                    <span class="kpi-trend up">+ 18%</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Main layout -->
+    <section class="main-layout">
+        <!-- Column 1: User & behavior -->
+        <div class="column">
+            <!-- User trend -->
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">
+                            <span data-i18n="dashboard.cards.userGrowth.title">User Growth & Activity</span>
+                            <span class="card-title-pill" data-i18n="dashboard.cards.userGrowth.pill">User View</span>
+                        </div>
+                        <div class="card-sub" data-i18n="dashboard.cards.userGrowth.sub">Last 7 Days - Reg vs Active</div>
+                    </div>
+                    <span class="card-badge" data-i18n="dashboard.cards.userGrowth.badge">Daily Stats</span>
+                </div>
+                <div class="card-body">
+                    <div class="trend-row">
+                        <div class="trend-block">
+                            <div class="trend-label">
+                                <span data-i18n="dashboard.trend.newRegisters">New Registers</span>
+                                <span class="label-sub" data-i18n="dashboard.trend.newRegistersSub">+32 This Week</span>
+                            </div>
+                            <div class="trend-main">
+                                <span class="value">9</span>
+                                <span class="trend-tag">REG</span>
+                            </div>
+                            <div class="trend-mini-chart"></div>
+                        </div>
+                        <div class="trend-block">
+                            <div class="trend-label">
+                                <span data-i18n="dashboard.trend.activations">Activations</span>
+                                <span class="label-sub" data-i18n="dashboard.trend.activationsSub">Conv. Rate 78%</span>
+                            </div>
+                            <div class="trend-main">
+                                <span class="value">7</span>
+                                <span class="trend-tag">ACT</span>
+                            </div>
+                            <div class="trend-mini-chart"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Funnel -->
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">
+                            <span data-i18n="dashboard.cards.funnel.title">Conversion Funnel</span>
+                            <span class="card-title-pill" data-i18n="dashboard.cards.funnel.pill">Reg to Success</span>
+                        </div>
+                        <div class="card-sub" data-i18n="dashboard.cards.funnel.sub">Identify drop-off points</div>
+                    </div>
+                    <span class="card-badge" data-i18n="dashboard.cards.funnel.badge">Today</span>
+                </div>
+                <div class="card-body">
+                    <div class="funnel">
+                        <div class="funnel-step" data-role="funnel-step" data-step="registered">
+                            <div class="funnel-label" data-field="step-name">Registered</div>
+                            <div class="funnel-bar-wrap" data-field="count">
+                                <div class="funnel-bar-fill" style="width:100%"></div>
+                            </div>
+                            <div class="funnel-meta" data-field="percentage">100%</div>
+                        </div>
+                        <div class="funnel-step" data-role="funnel-step" data-step="activated">
+                            <div class="funnel-label" data-field="step-name">Activated</div>
+                            <div class="funnel-bar-wrap" data-field="count">
+                                <div class="funnel-bar-fill" style="width:85%"></div>
+                            </div>
+                            <div class="funnel-meta" data-field="percentage">85%</div>
+                        </div>
+                        <div class="funnel-step" data-role="funnel-step" data-step="uploaded">
+                            <div class="funnel-label" data-field="step-name">Upload</div>
+                            <div class="funnel-bar-wrap" data-field="count">
+                                <div class="funnel-bar-fill" style="width:72%"></div>
+                            </div>
+                            <div class="funnel-meta" data-field="percentage">72%</div>
+                        </div>
+                        <div class="funnel-step" data-role="funnel-step" data-step="started">
+                            <div class="funnel-label" data-field="step-name">Parse</div>
+                            <div class="funnel-bar-wrap" data-field="count">
+                                <div class="funnel-bar-fill" style="width:62%"></div>
+                            </div>
+                            <div class="funnel-meta" data-field="percentage">62%</div>
+                        </div>
+                        <div class="funnel-step" data-role="funnel-step" data-step="succeeded">
+                            <div class="funnel-label" data-field="step-name">Success</div>
+                            <div class="funnel-bar-wrap" data-field="count">
+                                <div class="funnel-bar-fill" style="width:55%"></div>
+                            </div>
+                            <div class="funnel-meta" data-field="percentage">55%</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- User segments -->
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">
+                            <span data-i18n="dashboard.cards.segments.title">User Segmentation</span>
+                            <span class="card-title-pill" data-i18n="dashboard.cards.segments.pill">30 Days</span>
+                        </div>
+                        <div class="card-sub" data-i18n="dashboard.cards.segments.sub">By Frequency & Recency</div>
+                    </div>
+                    <span class="card-badge" data-i18n="dashboard.cards.segments.badge">For Ops</span>
+                </div>
+                <div class="card-body">
+                    <div class="segment-list">
+                        <div class="segment-item" data-role="segment-row">
+                            <div class="segment-label" data-field="segment-name">
+                                <span class="segment-dot high"></span>
+                                <span data-i18n="dashboard.segments.high">High Freq</span>
+                            </div>
+                            <div class="segment-value" data-field="segment-count">12 Users</div>
+                            <div class="segment-extra" data-field="segment-desc">&gt; 10 Actions</div>
+                        </div>
+                        <div class="segment-item" data-role="segment-row">
+                            <div class="segment-label" data-field="segment-name">
+                                <span class="segment-dot mid"></span>
+                                <span data-i18n="dashboard.segments.light">Light Users</span>
+                            </div>
+                            <div class="segment-value" data-field="segment-count">26 Users</div>
+                            <div class="segment-extra" data-field="segment-desc">1-3 Actions</div>
+                        </div>
+                        <div class="segment-item" data-role="segment-row">
+                            <div class="segment-label" data-field="segment-name">
+                                <span class="segment-dot low"></span>
+                                <span data-i18n="dashboard.segments.churn">Risk</span>
+                            </div>
+                            <div class="segment-value" data-field="segment-count">8 Users</div>
+                            <div class="segment-extra" data-field="segment-desc">14 Days Inactive</div>
+                        </div>
+                        <div class="segment-item" data-role="segment-row">
+                            <div class="segment-label" data-field="segment-name">
+                                <span class="segment-dot sleep"></span>
+                                <span data-i18n="dashboard.segments.silent">Dormant</span>
+                            </div>
+                            <div class="segment-value" data-field="segment-count">19 Users</div>
+                            <div class="segment-extra" data-field="segment-desc">Reg only</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Column 2: Performance & tokens -->
+        <div class="column">
+            <!-- Success & errors -->
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">
+                            <span data-i18n="dashboard.cards.success.title">Success Rate &amp; Errors</span>
+                            <span class="card-title-pill" data-i18n="dashboard.cards.success.pill">Availability</span>
+                        </div>
+                        <div class="card-sub" data-i18n="dashboard.cards.success.sub">Time series of stability</div>
+                    </div>
+                    <span class="card-badge" data-i18n="dashboard.cards.success.badge">24 Hours</span>
+                </div>
+                <div class="card-body">
+                    <div class="chart-placeholder" data-label="Trend Chart Placeholder"></div>
+                    <div class="chart-meta-row">
+                        <div>
+                            <span class="badge-pill success">Success 98.7%</span>
+                            <span class="badge-pill danger ml-4">Errors: 3</span>
+                        </div>
+                        <div class="meta-code">Err: Timeout(1)</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Latency -->
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">
+                            <span data-i18n="dashboard.cards.latency.title">Latency Distribution</span>
+                            <span class="card-title-pill" data-i18n="dashboard.cards.latency.pill">Performance</span>
+                        </div>
+                        <div class="card-sub" data-i18n="dashboard.cards.latency.sub">Buckets &amp; Top Slow Requests</div>
+                    </div>
+                    <span class="card-badge" data-i18n="dashboard.cards.latency.badge">P50 / P95 / P99</span>
+                </div>
+                <div class="card-body">
+                    <div class="chart-placeholder small" data-label="Histogram Placeholder"></div>
+                    <div class="chart-meta-row">
+                        <div>80% Req &lt; 3s | 2% &gt; 10s</div>
+                        <div>Max Slow: 10.8s</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tokens & cost -->
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">
+                            <span data-i18n="dashboard.cards.tokens.title">Token Cost View</span>
+                            <span class="card-title-pill" data-i18n="dashboard.cards.tokens.pill">Finance</span>
+                        </div>
+                        <div class="card-sub" data-i18n="dashboard.cards.tokens.sub">Daily tracking by Model</div>
+                    </div>
+                    <span class="card-badge" data-i18n="dashboard.cards.tokens.badge">Last 7 Days</span>
+                </div>
+                <div class="card-body">
+                    <div class="token-grid">
+                        <div class="token-item">
+                            <div class="token-label" data-i18n="dashboard.tokens.today">Tokens Today</div>
+                            <div class="token-value" data-field="tokens-total">128,450</div>
+                            <div class="token-sub" data-field="tokens-average" data-i18n="dashboard.tokens.avg">Avg 698</div>
+                        </div>
+                        <div class="token-item">
+                            <div class="token-label" data-i18n="dashboard.tokens.cost">Est. Cost</div>
+                            <div class="token-value" data-field="cost-today">$ 23.16</div>
+                            <div class="token-sub" data-field="cost-month" data-i18n="dashboard.tokens.month">Mo. Total $ 326.4</div>
+                        </div>
+                        <div class="token-item">
+                            <div class="token-label" data-i18n="dashboard.tokens.costPerReq">Cost/Req</div>
+                            <div class="token-value">$ 0.13</div>
+                            <div class="token-sub" data-i18n="dashboard.tokens.target">Target &lt;= $ 0.15</div>
+                        </div>
+                    </div>
+                    <div class="chart-placeholder small" data-label="Area Chart Placeholder"></div>
+                    <div class="chart-meta-row">
+                        <div>Model A: 72%</div>
+                        <div>Model B: 28%</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Column 3: Activation & alerts -->
+        <div class="column">
+            <!-- Activation codes -->
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">
+                            <span data-i18n="dashboard.cards.activation.title">Activation Codes</span>
+                            <span class="card-title-pill" data-i18n="dashboard.cards.activation.pill">Channels</span>
+                        </div>
+                        <div class="card-sub" data-i18n="dashboard.cards.activation.sub">Generated vs Used</div>
+                    </div>
+                    <span class="card-badge" data-i18n="dashboard.cards.activation.badge">Total + Today</span>
+                </div>
+                <div class="card-body">
+                    <div class="activation-stat">
+                        <span data-i18n="dashboard.activation.total">Total Generated</span>
+                        <span class="stat-highlight" data-field="activation-total">120 Units</span>
+                    </div>
+                    <div class="activation-stat">
+                        <span data-i18n="dashboard.activation.used">Used</span>
+                        <span class="stat-highlight" data-field="activation-used">82 Units (68.3%)</span>
+                    </div>
+                    <div class="progress-wrap">
+                        <div class="progress-fill" style="width: 68.3%" data-field="activation-rate"></div>
+                    </div>
+                    <div class="chart-meta-row mt-12">
+                        <div>New Activation Today: <span class="stat-highlight" data-field="activation-today">7</span></div>
+                        <div>Beta Group 56% | Direct 32%</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quota warning -->
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">
+                            <span data-i18n="dashboard.cards.quota.title">Quota Warning</span>
+                            <span class="card-title-pill" data-i18n="dashboard.cards.quota.pill">Leads</span>
+                        </div>
+                        <div class="card-sub" data-i18n="dashboard.cards.quota.sub">Users with low remaining credits</div>
+                    </div>
+                    <span class="card-badge" data-i18n="dashboard.cards.quota.badge">Left &lt;= 3</span>
+                </div>
+                <div class="card-body">
+                    <table class="quota-table">
+                        <thead>
+                        <tr>
+                            <th data-i18n="dashboard.quota.user">User</th>
+                            <th data-i18n="dashboard.quota.used">Used</th>
+                            <th data-i18n="dashboard.quota.left">Left</th>
+                            <th data-i18n="dashboard.quota.lastAction">Last Action</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr data-role="quota-row">
+                            <td data-field="user">
+                                <div class="quota-name">
+                                    <span class="segment-dot dot-red"></span>
+                                    <span>User A - Mfg</span>
+                                </div>
+                            </td>
+                            <td data-field="used">47</td>
+                            <td class="quota-remaining low" data-field="remaining">1</td>
+                            <td><span class="quota-tag" data-field="last-parse">10m ago</span></td>
+                        </tr>
+                        <tr data-role="quota-row">
+                            <td data-field="user">
+                                <div class="quota-name">
+                                    <span class="segment-dot dot-orange"></span>
+                                    <span>User B - Consult</span>
+                                </div>
+                            </td>
+                            <td data-field="used">15</td>
+                            <td class="quota-remaining low" data-field="remaining">2</td>
+                            <td><span class="quota-tag" data-field="last-parse">2h ago</span></td>
+                        </tr>
+                        <tr data-role="quota-row">
+                            <td data-field="user">
+                                <div class="quota-name">
+                                    <span class="segment-dot dot-green"></span>
+                                    <span>User C - Ops</span>
+                                </div>
+                            </td>
+                            <td data-field="used">6</td>
+                            <td data-field="remaining">9</td>
+                            <td><span class="quota-tag" data-field="last-parse">Yesterday</span></td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Alerts -->
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">
+                            <span data-i18n="dashboard.cards.alerts.title">Anomalies &amp; Alerts</span>
+                            <span class="card-title-pill" data-i18n="dashboard.cards.alerts.pill">Last 1h</span>
+                        </div>
+                        <div class="card-sub" data-i18n="dashboard.cards.alerts.sub">Auto-detection</div>
+                    </div>
+                    <span class="card-badge" data-i18n="dashboard.cards.alerts.badge">Configurable</span>
+                </div>
+                <div class="card-body">
+                    <div class="alert-list">
+                        <div class="alert-item" data-role="alert-item" data-level="critical">
+                            <div class="alert-dot red"></div>
+                            <div class="alert-main">
+                                <div class="alert-title" data-field="alert-title">Model 429 Rate Limit Spike</div>
+                                <div class="alert-meta" data-field="alert-message">3 times in 10 mins. Suggest reducing concurrency.</div>
+                            </div>
+                        </div>
+                        <div class="alert-item low" data-role="alert-item" data-level="warning">
+                            <div class="alert-dot yellow"></div>
+                            <div class="alert-main">
+                                <div class="alert-title" data-field="alert-title">High Token Usage (Single)</div>
+                                <div class="alert-meta" data-field="alert-message">User A used 3,240 tokens in one go. Check logs.</div>
+                            </div>
+                        </div>
+                        <div class="alert-item alert-item-ok" data-role="alert-item" data-level="info">
+                            <div class="alert-dot green"></div>
+                            <div class="alert-main">
+                                <div class="alert-title ok" data-field="alert-title">System Normal</div>
+                                <div class="alert-meta" data-field="alert-message">Success Rate 99.1% | Avg Latency 2.1s</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>
+</div>
+<script src="js/ops_dashboard.js" defer></script>
+</body>
+</html>

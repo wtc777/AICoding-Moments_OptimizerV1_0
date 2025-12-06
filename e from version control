@@ -1,0 +1,35 @@
+[33mcommit 2e190d62fca5437fe604c5b345660994b5c8b0af[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m
+Author: tc.wang <tc.wang@wellrain.com>
+Date:   Sat Dec 6 21:13:32 2025 +0800
+
+    chore: remove sqlite database from version control
+
+[33mcommit db776f43e3875a4d456d64706e6458c9a4f6f793[m
+Author: tc.wang <tc.wang@wellrain.com>
+Date:   Fri Dec 5 21:22:29 2025 +0800
+
+    追加后台运营数据看板 支持查看用户注册情况 用户活跃度 激活码使用量情况 tokens消耗情况 用户漏斗分析等
+
+[33mcommit 9bf6cb053e24d931554ab5847ffdee9d723b5b49[m
+Author: tc.wang <tc.wang@wellrain.com>
+Date:   Fri Dec 5 17:47:41 2025 +0800
+
+    追加优化记录历史存储包括上传图片和用户录入文本以及优化结果；追加激活码生成仅限管理员查看自己生成的 限制；优化CDN链接导致的部分用户访问加载慢的问题；
+
+[33mcommit e21a07557a2e5c546d8f047a5db0faa7a30d2fd7[m[33m ([m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m
+Author: tc.wang <tc.wang@wellrain.com>
+Date:   Fri Dec 5 10:51:35 2025 +0800
+
+    status
+
+[33mcommit 61d063f283a3d755874353ff8b66151ad050a74d[m
+Author: tc.wang <tc.wang@wellrain.com>
+Date:   Fri Dec 5 10:23:40 2025 +0800
+
+    代码重构 去中文化 前端代码css html js拆分；追加了密码重置 修改密码 涉及密码修改和注册操作的二次核验机制 追加历史记录，针对激活码生成调整为管理员仅可查看自己生成的激活码
+
+[33mcommit 83c0973b02ae1dff1aa560f9cdd9717da97fab2f[m
+Author: tc.wang <tc.wang@wellrain.com>
+Date:   Wed Dec 3 08:22:04 2025 +0800
+
+    追加了登录注册功能，追加激活码机制 显示分析次数 如需增加分析次数需要申请激活码  追加超级管理员创建入口，超级管理员具备指定管理员和批量生成激活码的权限 增加用户角色分配 管理员仅具备批量生成激活码的权限 追加后台管理页面查看用户活跃度
