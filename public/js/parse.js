@@ -257,11 +257,11 @@
     progressState.timer = window.setInterval(renderProgressSteps, 1000);
   }
 
-  function computeElapsedMs(step) {
+  function computeElapsedMs(step, serverNowIso) {
     if (!step) return 0;
     const start = step.startedAt ? Date.parse(step.startedAt) : null;
     const end = step.finishedAt ? Date.parse(step.finishedAt) : null;
-    const now = Date.now();
+    const now = serverNowIso ? Date.parse(serverNowIso) : Date.now();
     if (start && end) return Math.max(0, end - start);
     if (start && !end) return Math.max(0, now - start);
     return 0;
@@ -274,13 +274,13 @@
         { method: 'GET', headers: { Authorization: `Bearer ${window.appCommon.getToken()}` } },
         { requireAuth: true }
       );
-      const { task, steps } = data || {};
+      const { task, steps, serverTime } = data || {};
       if (!task || !Array.isArray(steps)) return;
 
       progressState.steps.forEach((uiStep) => {
         const serverStep = steps.find((s) => s.stepKey === uiStep.stepKey);
         if (!serverStep) return;
-        const elapsedMs = computeElapsedMs(serverStep);
+        const elapsedMs = computeElapsedMs(serverStep, serverTime);
         let status = 'pending';
         if (serverStep.status === 'RUNNING') status = 'active';
         else if (serverStep.status === 'SUCCESS') status = 'done';

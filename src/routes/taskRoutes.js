@@ -39,6 +39,7 @@ function createTaskRouter(taskStore, stepDefinitions) {
         console.warn(`Failed to parse result_json for task ${task.id}:`, parseErr.message);
       }
       res.json({
+        serverTime: new Date().toISOString(),
         task: {
           id: task.id,
           type: task.type,
