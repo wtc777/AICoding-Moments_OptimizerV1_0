@@ -6,6 +6,9 @@ function createTaskRouter(taskStore, stepDefinitions) {
 
   router.post('/api/tasks', async (req, res) => {
     try {
+      if (!req.user || !req.user.sub) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
       const taskId = crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
       const type = req.body?.type || 'moments_optimize';
       const payloadJson = JSON.stringify({
@@ -20,7 +23,7 @@ function createTaskRouter(taskStore, stepDefinitions) {
       });
       res.json({ taskId });
     } catch (err) {
-      console.error('Create task error:', err.message);
+      console.error('Create task error:', err);
       res.status(500).json({ error: 'Failed to create task' });
     }
   });
