@@ -154,6 +154,7 @@
   "parse.imagePointsPrefix": "图片要点：",
   "parse.noAnalysisContent": "暂无解析内容",
   "parse.noRawText": "暂无原始文本",
+  "parse.defaultUserText": "请进行解析",
   "parse.customInputPrefix": "用户输入：",
   "parse.statusFailed": "生成失败",
   "parse.previewReady": "预览已更新",

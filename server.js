@@ -1,3 +1,4 @@
+require('dotenv').config();
 const path = require('path');
 const fs = require('fs');
 const express = require('express');
@@ -6,7 +7,10 @@ const fetch = require('node-fetch');
 const crypto = require('crypto');
 const sharp = require('sharp');
 const sqlite3 = require('sqlite3').verbose();
-require('dotenv').config();
+const taskStore = require('./src/db/taskStore');
+const { createTaskRouter } = require('./src/routes/taskRoutes');
+const { defaultSteps } = require('./src/services/steps/stepHandlers');
+const { startTaskWorker } = require('./src/worker/taskWorker');
 
 const app = express();
 const PORT = process.env.PORT || 3021;
@@ -45,6 +49,8 @@ app.use(
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/admin', express.static(path.join(__dirname, 'public')));
 app.use('/locales', express.static(path.join(__dirname, 'locales')));
+app.use('/api/tasks', authMiddleware);
+app.use(createTaskRouter(taskStore, defaultSteps));
 
 function ensureDataFiles() {
   if (!fs.existsSync(DATA_DIR)) {
@@ -1511,6 +1517,14 @@ initDb();
 migrateSchema().catch((err) => {
   console.error('Schema migration failed:', err.message);
 });
+taskStore
+  .initTaskTables()
+  .then(() => {
+    startTaskWorker(taskStore);
+  })
+  .catch((err) => {
+    console.error('Task tables initialization failed:', err.message);
+  });
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);

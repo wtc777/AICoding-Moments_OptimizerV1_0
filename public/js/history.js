@@ -4,6 +4,13 @@
   let pageSize = 10;
   let total = 0;
 
+  function formatLocalTime(value) {
+    if (!value) return '--';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return value;
+    return d.toLocaleString();
+  }
+
   function cacheDom() {
     dom.startDate = document.getElementById('startDate');
     dom.endDate = document.getElementById('endDate');
@@ -53,7 +60,7 @@
         : '';
       card.innerHTML = `
         <div class="flex items-center justify-between text-sm text-gray-600">
-          <span>${item.created_at || '--'}</span>
+          <span>${formatLocalTime(item.created_at)}</span>
           <span>${item.duration_ms != null ? `${item.duration_ms}ms` : '--'}</span>
         </div>
         <div class="flex gap-3 items-start">

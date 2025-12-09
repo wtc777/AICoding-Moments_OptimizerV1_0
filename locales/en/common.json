@@ -154,6 +154,7 @@
   "parse.imagePointsPrefix": "Image highlights: ",
   "parse.noAnalysisContent": "No analysis yet",
   "parse.noRawText": "No original text",
+  "parse.defaultUserText": "Please analyze and optimize.",
   "parse.customInputPrefix": "User input: ",
   "parse.statusFailed": "Failed",
   "parse.previewReady": "Preview updated",

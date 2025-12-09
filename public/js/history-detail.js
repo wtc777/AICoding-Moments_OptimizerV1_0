@@ -1,6 +1,13 @@
 (() => {
   const dom = {};
 
+  function formatLocalTime(value) {
+    if (!value) return '--';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return value;
+    return d.toLocaleString();
+  }
+
   function cacheDom() {
     dom.detailTime = document.getElementById('detailTime');
     dom.detailDuration = document.getElementById('detailDuration');
@@ -55,7 +62,7 @@
         { headers: { Authorization: `Bearer ${window.appCommon.getToken()}` } },
         { requireAuth: true }
       );
-      dom.detailTime.textContent = detail.created_at || '--';
+      dom.detailTime.textContent = formatLocalTime(detail.created_at);
       dom.detailDuration.textContent = detail.duration_ms != null ? `${detail.duration_ms}ms` : '--';
       dom.detailTokens.textContent = formatTokens(detail);
       dom.detailModel.textContent = detail.model_name || '--';

@@ -1,1 +1,42 @@
 /* Page-specific styles for parse.html */
+
+.progress-step {
+  transition: border-color 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
+}
+
+.progress-step .progress-step-dot {
+  transition: background-color 0.2s ease;
+}
+
+.progress-step .progress-step-status,
+.progress-step .progress-step-time {
+  transition: color 0.2s ease;
+}
+
+.progress-step.is-active {
+  border-color: #bfdbfe;
+  background-color: #eff6ff;
+  transform: translateY(-2px);
+}
+
+.progress-step.is-active .progress-step-dot {
+  background-color: #2563eb;
+}
+
+.progress-step.is-done {
+  border-color: #d1fae5;
+  background-color: #ecfdf3;
+}
+
+.progress-step.is-done .progress-step-dot {
+  background-color: #10b981;
+}
+
+.progress-step.is-error {
+  border-color: #fecdd3;
+  background-color: #fff1f2;
+}
+
+.progress-step.is-error .progress-step-dot {
+  background-color: #f43f5e;
+}

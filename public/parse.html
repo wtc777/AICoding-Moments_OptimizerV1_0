@@ -187,13 +187,96 @@
     </main>
 
     <!-- Processing state -->
-    <div id="processingModal" class="hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center px-6">
-      <div class="w-full max-w-sm rounded-2xl bg-white shadow-2xl border border-gray-100 p-6 text-center space-y-3">
-        <div class="w-12 h-12 mx-auto rounded-full bg-blue-50 flex items-center justify-center">
-          <svg class="w-6 h-6 text-blue-500 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v2m0 12v2m8-8h-2M6 12H4m12.364-6.364l-1.414 1.414M7.05 16.95l-1.414 1.414m12.728 0l-1.414-1.414M7.05 7.05L5.636 5.636" /></svg>
+    <div id="processingModal" class="hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center px-6">
+      <div class="w-full max-w-2xl rounded-3xl bg-white shadow-2xl border border-gray-100 p-6 space-y-5">
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.25em] text-blue-500" data-i18n="parse.progressTitle">Progress</p>
+            <p class="text-lg font-semibold text-gray-900" data-i18n="parse.progressSubtitle">Real-time execution steps</p>
+          </div>
+          <div class="flex items-center gap-3 text-sm text-gray-500">
+            <div class="flex items-center gap-2">
+              <span class="inline-flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span data-i18n="parse.progressLive">Live</span>
+            </div>
+          </div>
         </div>
-        <p class="text-lg font-semibold text-gray-900" data-i18n="parse.generating">Generating copy...</p>
-        <p class="text-sm text-gray-500" data-i18n="parse.generatingTip">Please wait; this will close when ready.</p>
+
+        <div id="progressError" class="hidden rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm text-rose-700"></div>
+
+        <ul id="progressSteps" class="space-y-2">
+          <li class="progress-step flex items-center justify-between gap-3 rounded-2xl border border-gray-100 bg-white px-4 py-3" data-step-id="imageProcessing">
+            <div class="flex items-center gap-3">
+              <span class="progress-step-dot h-2.5 w-2.5 rounded-full bg-gray-300"></span>
+              <div>
+                <p class="progress-step-title text-sm font-semibold text-gray-900" data-i18n="parse.progress.stepImageProcessing">Processing image</p>
+                <p class="progress-step-status text-xs text-gray-500" data-status-text></p>
+              </div>
+            </div>
+            <div class="progress-step-time text-sm font-semibold text-gray-700 min-w-[96px] text-right" data-time-text></div>
+          </li>
+          <li class="progress-step flex items-center justify-between gap-3 rounded-2xl border border-gray-100 bg-white px-4 py-3" data-step-id="visionCall">
+            <div class="flex items-center gap-3">
+              <span class="progress-step-dot h-2.5 w-2.5 rounded-full bg-gray-300"></span>
+              <div>
+                <p class="progress-step-title text-sm font-semibold text-gray-900" data-i18n="parse.progress.stepVisionCall">Calling image analysis model</p>
+                <p class="progress-step-status text-xs text-gray-500" data-status-text></p>
+              </div>
+            </div>
+            <div class="progress-step-time text-sm font-semibold text-gray-700 min-w-[96px] text-right" data-time-text></div>
+          </li>
+          <li class="progress-step flex items-center justify-between gap-3 rounded-2xl border border-gray-100 bg-white px-4 py-3" data-step-id="visionResult">
+            <div class="flex items-center gap-3">
+              <span class="progress-step-dot h-2.5 w-2.5 rounded-full bg-gray-300"></span>
+              <div>
+                <p class="progress-step-title text-sm font-semibold text-gray-900" data-i18n="parse.progress.stepVisionResult">Received image analysis</p>
+                <p class="progress-step-status text-xs text-gray-500" data-status-text></p>
+              </div>
+            </div>
+            <div class="progress-step-time text-sm font-semibold text-gray-700 min-w-[96px] text-right" data-time-text></div>
+          </li>
+          <li class="progress-step flex items-center justify-between gap-3 rounded-2xl border border-gray-100 bg-white px-4 py-3" data-step-id="bundle">
+            <div class="flex items-center gap-3">
+              <span class="progress-step-dot h-2.5 w-2.5 rounded-full bg-gray-300"></span>
+              <div>
+                <p class="progress-step-title text-sm font-semibold text-gray-900" data-i18n="parse.progress.stepBundle">Bundling prompt and inputs</p>
+                <p class="progress-step-status text-xs text-gray-500" data-status-text></p>
+              </div>
+            </div>
+            <div class="progress-step-time text-sm font-semibold text-gray-700 min-w-[96px] text-right" data-time-text></div>
+          </li>
+          <li class="progress-step flex items-center justify-between gap-3 rounded-2xl border border-gray-100 bg-white px-4 py-3" data-step-id="textModel">
+            <div class="flex items-center gap-3">
+              <span class="progress-step-dot h-2.5 w-2.5 rounded-full bg-gray-300"></span>
+              <div>
+                <p class="progress-step-title text-sm font-semibold text-gray-900" data-i18n="parse.progress.stepTextModel">Calling text reasoning model</p>
+                <p class="progress-step-status text-xs text-gray-500" data-status-text></p>
+              </div>
+            </div>
+            <div class="progress-step-time text-sm font-semibold text-gray-700 min-w-[96px] text-right" data-time-text></div>
+          </li>
+          <li class="progress-step flex items-center justify-between gap-3 rounded-2xl border border-gray-100 bg-white px-4 py-3" data-step-id="render">
+            <div class="flex items-center gap-3">
+              <span class="progress-step-dot h-2.5 w-2.5 rounded-full bg-gray-300"></span>
+              <div>
+                <p class="progress-step-title text-sm font-semibold text-gray-900" data-i18n="parse.progress.stepRender">Loading result to page</p>
+                <p class="progress-step-status text-xs text-gray-500" data-status-text></p>
+              </div>
+            </div>
+            <div class="progress-step-time text-sm font-semibold text-gray-700 min-w-[96px] text-right" data-time-text></div>
+          </li>
+        </ul>
+
+        <div class="pt-4">
+          <button id="progressCloseBtn" class="relative w-full overflow-hidden rounded-2xl py-3 font-semibold text-white shadow-lg shadow-blue-500/30 transition-all duration-300 hover:shadow-blue-500/40 active:scale-[0.98]">
+            <div class="absolute inset-0 bg-gradient-to-r from-[#4F7BFF] to-[#6DD5FA]"></div>
+            <span class="relative flex items-center justify-center gap-2">
+              <svg class="w-5 h-5 text-blue-100" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M12 5l7 7-7 7" /></svg>
+              <span data-i18n="parse.progress.finish">Finish</span>
+            </span>
+          </button>
+        </div>
+
       </div>
     </div>
 

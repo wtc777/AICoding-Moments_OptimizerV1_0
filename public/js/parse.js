@@ -10,6 +10,22 @@
   let actionFeedbackTimer = null;
   let isSuperAdmin = false;
   let debugEnabled = false;
+  const TASK_STEPS = [
+    { id: 'imageProcessing', stepKey: 'image_processing', i18nKey: 'parse.progress.stepImageProcessing' },
+    { id: 'visionCall', stepKey: 'image_model_call', i18nKey: 'parse.progress.stepVisionCall' },
+    { id: 'visionResult', stepKey: 'image_result_saved', i18nKey: 'parse.progress.stepVisionResult' },
+    { id: 'bundle', stepKey: 'prompt_building', i18nKey: 'parse.progress.stepBundle' },
+    { id: 'textModel', stepKey: 'llm_call', i18nKey: 'parse.progress.stepTextModel' },
+    { id: 'render', stepKey: 'final_result', i18nKey: 'parse.progress.stepRender' }
+  ];
+  const progressState = {
+    steps: [],
+    timer: null,
+    pollTimer: null,
+    canClose: false,
+    hasError: false,
+    taskId: null
+  };
 
   function cacheDom() {
     dom.dropzone = document.getElementById('dropzone');
@@ -52,6 +68,9 @@
     dom.debugPanel = document.getElementById('debugPanel');
     dom.debugToggle = document.getElementById('debugToggle');
     dom.debugContent = document.getElementById('debugContent');
+    dom.progressList = document.getElementById('progressSteps');
+    dom.progressCloseBtn = document.getElementById('progressCloseBtn');
+    dom.progressError = document.getElementById('progressError');
     console.log('[parse] cacheDom', dom);
   }
 
@@ -101,13 +120,221 @@
     dom.emptyState.classList.remove('hidden');
   }
 
+  function formatSeconds(ms) {
+    const sec = Math.round(ms / 1000);
+    return Number.isFinite(sec) ? `${sec}` : '0';
+  }
+
+  function stopProgressTimer() {
+    if (progressState.timer) {
+      clearInterval(progressState.timer);
+      progressState.timer = null;
+    }
+  }
+
+  function stopPollTimer() {
+    if (progressState.pollTimer) {
+      clearInterval(progressState.pollTimer);
+      progressState.pollTimer = null;
+    }
+  }
+
+  function showProgressModal() {
+    if (!dom.processingModal) return;
+    dom.processingModal.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function hideProgressModal() {
+    if (!dom.processingModal) return;
+    dom.processingModal.classList.add('hidden');
+    document.body.style.overflow = '';
+    stopProgressTimer();
+  }
+
+  function renderProgressSteps() {
+    if (!dom.progressList) return;
+    const statusTextMap = {
+      pending: i18n.t('parse.progress.status.pending'),
+      active: i18n.t('parse.progress.status.active'),
+      done: i18n.t('parse.progress.status.done'),
+      error: i18n.t('parse.progress.status.error')
+    };
+    const now = performance.now();
+    dom.progressList.querySelectorAll('.progress-step').forEach((el) => {
+      const stepId = el.getAttribute('data-step-id');
+      const step = progressState.steps.find((s) => s.id === stepId);
+      const dot = el.querySelector('.progress-step-dot');
+      const statusEl = el.querySelector('[data-status-text]');
+      const timeEl = el.querySelector('[data-time-text]');
+      if (!step) return;
+
+      const totalMs = step.elapsedMs;
+      const timeLabel = i18n.t('parse.progress.time', { seconds: formatSeconds(totalMs) });
+      const statusLabel = statusTextMap[step.status] || statusTextMap.pending;
+
+      el.classList.toggle('is-active', step.status === 'active');
+      el.classList.toggle('is-done', step.status === 'done');
+      el.classList.toggle('is-error', step.status === 'error');
+      if (dot) {
+        dot.classList.toggle('bg-blue-500', step.status === 'active');
+        dot.classList.toggle('bg-emerald-500', step.status === 'done');
+        dot.classList.toggle('bg-rose-500', step.status === 'error');
+      }
+      if (statusEl) statusEl.textContent = statusLabel;
+      if (timeEl) timeEl.textContent = timeLabel;
+    });
+  }
+
+  function setProgressStatus(stepId, status, elapsedAdd = 0) {
+    const step = progressState.steps.find((s) => s.id === stepId);
+    if (!step) return;
+    if (elapsedAdd > 0) {
+      step.elapsedMs += elapsedAdd;
+    }
+    step.status = status;
+    renderProgressSteps();
+  }
+
+  function finishProgressSteps() {
+    const now = performance.now();
+    progressState.steps.forEach((step) => {
+      step.status = 'done';
+    });
+    stopProgressTimer();
+    progressState.canClose = true;
+    if (dom.progressCloseBtn) dom.progressCloseBtn.disabled = false;
+    renderProgressSteps();
+  }
+
+  function failProgress(message) {
+    const now = performance.now();
+    stopProgressTimer();
+    stopPollTimer();
+    progressState.hasError = true;
+    let markedError = false;
+    progressState.steps.forEach((step) => {
+      if (!markedError && (step.status === 'active' || step.status === 'pending')) {
+        step.status = 'error';
+        markedError = true;
+      }
+    });
+    progressState.canClose = true;
+    if (dom.progressCloseBtn) dom.progressCloseBtn.disabled = false;
+    if (dom.progressError) {
+      const fallback = i18n.t('common.requestFailed');
+      dom.progressError.textContent = i18n.t('parse.progress.error', { message: message || fallback });
+      dom.progressError.classList.remove('hidden');
+    }
+    renderProgressSteps();
+  }
+
+  function startProgress() {
+    stopProgressTimer();
+    stopPollTimer();
+    progressState.steps = TASK_STEPS.map((step) => ({
+      ...step,
+      status: 'pending',
+      elapsedMs: 0,
+      startedAt: null
+    }));
+    progressState.taskId = null;
+    progressState.canClose = false;
+    progressState.hasError = false;
+    if (dom.progressError) {
+      dom.progressError.textContent = '';
+      dom.progressError.classList.add('hidden');
+    }
+    if (dom.progressCloseBtn) {
+      dom.progressCloseBtn.disabled = false;
+      dom.progressCloseBtn.classList.remove('hidden');
+    }
+    showProgressModal();
+    if (TASK_STEPS[0]) {
+      setProgressStatus(TASK_STEPS[0].id, 'active');
+    }
+    renderProgressSteps();
+    progressState.timer = window.setInterval(renderProgressSteps, 1000);
+  }
+
+  function computeElapsedMs(step) {
+    if (!step) return 0;
+    const start = step.startedAt ? Date.parse(step.startedAt) : null;
+    const end = step.finishedAt ? Date.parse(step.finishedAt) : null;
+    const now = Date.now();
+    if (start && end) return Math.max(0, end - start);
+    if (start && !end) return Math.max(0, now - start);
+    return 0;
+  }
+
+  async function fetchTaskStatus(taskId, baseText) {
+    try {
+      const data = await window.appCommon.authFetch(
+        `/api/tasks/${taskId}`,
+        { method: 'GET', headers: { Authorization: `Bearer ${window.appCommon.getToken()}` } },
+        { requireAuth: true }
+      );
+      const { task, steps } = data || {};
+      if (!task || !Array.isArray(steps)) return;
+
+      progressState.steps.forEach((uiStep) => {
+        const serverStep = steps.find((s) => s.stepKey === uiStep.stepKey);
+        if (!serverStep) return;
+        const elapsedMs = computeElapsedMs(serverStep);
+        let status = 'pending';
+        if (serverStep.status === 'RUNNING') status = 'active';
+        else if (serverStep.status === 'SUCCESS') status = 'done';
+        else if (serverStep.status === 'FAILED') status = 'error';
+        const delta = Math.max(0, elapsedMs - uiStep.elapsedMs);
+        setProgressStatus(uiStep.id, status, delta);
+      });
+
+      const allDoneOrError = progressState.steps.every(
+        (s) => s.status === 'done' || s.status === 'error'
+      );
+      if (allDoneOrError) {
+        progressState.canClose = true;
+        if (dom.progressCloseBtn) dom.progressCloseBtn.disabled = false;
+      }
+
+      if (task.status === 'SUCCESS') {
+        stopPollTimer();
+        let result = task.resultJson || {};
+        if (result && typeof result === 'string') {
+          try {
+            result = JSON.parse(result);
+          } catch (err) {
+            console.warn('Failed to parse resultJson', err);
+            result = {};
+          }
+        }
+        const optimized = result.optimizedText || result.textResult || '';
+        const analysis = result.summary || result.visionSummary || '';
+        renderResult(optimized, analysis);
+        setStatus('parse.statusGenerated', 'green');
+        dom.exportPreview.src = dom.previewImage.src;
+        dom.exportText.textContent = baseText || i18n.t('parse.noNotes');
+        dom.exportMarkdown.innerHTML = marked.parse(optimized || '');
+        dom.exportDate.textContent = new Date().toLocaleDateString();
+        finishProgressSteps();
+        return;
+      }
+      if (task.status === 'FAILED') {
+        stopPollTimer();
+        failProgress(task.errorMessage || i18n.t('common.requestFailed'));
+        setStatus('parse.statusFailed', 'red');
+        return;
+      }
+    } catch (err) {
+      console.error('Poll task error', err);
+    }
+  }
+
   function setProcessing(isProcessing) {
     if (isProcessing) {
-      dom.processingModal.classList.remove('hidden');
-      document.body.style.overflow = 'hidden';
+      showProgressModal();
     } else {
-      dom.processingModal.classList.add('hidden');
-      document.body.style.overflow = '';
+      hideProgressModal();
     }
   }
 
@@ -320,10 +547,26 @@
       alert(i18n.t('parse.alertNoImage'));
       return;
     }
+    try {
+      const me = await window.appCommon.authFetch(
+        '/auth/me',
+        { headers: { Authorization: `Bearer ${window.appCommon.getToken()}` } },
+        { requireAuth: true }
+      );
+      if (typeof me?.credits === 'number') {
+        setCredits(me.credits);
+        if (me.credits <= 0) {
+          alert(i18n.t('parse.alertCredits'));
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('Pre-check credits failed', err);
+    }
     dom.analyzeBtn.disabled = true;
     dom.analyzeBtn.classList.add('opacity-90', 'cursor-not-allowed');
     setStatus('parse.statusGenerating', 'gray');
-    setProcessing(true);
+    startProgress();
     dom.analyzeLabel.innerHTML = `
       <svg class="w-5 h-5 text-blue-100 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v2m0 12v2m8-8h-2M6 12H4m12.364-6.364l-1.414 1.414M7.05 16.95l-1.414 1.414m12.728 0l-1.414-1.414M7.05 7.05L5.636 5.636" /></svg>
       ${i18n.t('parse.generating')}
@@ -333,8 +576,9 @@
       if (!base64Cache && selectedFile) {
         base64Cache = await fileToBase64(selectedFile);
       }
+
       const promptText = await loadDefaultPrompt();
-      const baseText = dom.textInput.value.trim();
+      const baseText = dom.textInput.value.trim() || i18n.t('parse.defaultUserText');
       const finalText = promptText
         ? `${promptText}\n\n${i18n.t('parse.customInputPrefix')}${baseText || i18n.t('parse.noNotes')}`
         : baseText;
@@ -343,19 +587,25 @@
         imageBase64: base64Cache,
         text: finalText,
         scenario: DEFAULT_SCENARIO,
-        userText: baseText
+        userText: baseText,
+        type: 'moments_optimize'
       };
-      const res = await callApi(payload);
-      renderResult(res.markdown, res.imageAnalysis);
-      setStatus('parse.statusGenerated', 'green');
-      if (typeof res.credits === 'number') {
-        setCredits(res.credits);
-      }
 
-      dom.exportPreview.src = dom.previewImage.src;
-      dom.exportText.textContent = baseText || i18n.t('parse.noNotes');
-      dom.exportMarkdown.innerHTML = marked.parse(res.markdown || '');
-      dom.exportDate.textContent = new Date().toLocaleDateString();
+      const createRes = await window.appCommon.authFetch(
+        '/api/tasks',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${window.appCommon.getToken()}` },
+          body: JSON.stringify(payload)
+        },
+        { requireAuth: true }
+      );
+      const { taskId } = createRes || {};
+      if (!taskId) throw new Error('Task id missing');
+      progressState.taskId = taskId;
+
+      progressState.pollTimer = window.setInterval(() => fetchTaskStatus(taskId, baseText), 1000);
+      await fetchTaskStatus(taskId, baseText);
     } catch (err) {
       if (err.code === 'INSUFFICIENT_CREDITS') {
         alert(i18n.t('parse.alertCredits'));
@@ -367,10 +617,10 @@
       dom.resultPlaceholder.classList.add('hidden');
       dom.imageAnalysisEl.classList.add('hidden');
       resetRawState();
+      failProgress(err.message);
     } finally {
       dom.analyzeBtn.disabled = false;
       dom.analyzeBtn.classList.remove('opacity-90', 'cursor-not-allowed');
-      setProcessing(false);
       dom.analyzeLabel.innerHTML = `
         <svg class="w-5 h-5 text-blue-100" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
         ${i18n.t('parse.start')}
@@ -516,6 +766,14 @@
         updateDebugPanel(null);
       });
     }
+
+    dom.progressCloseBtn?.addEventListener('click', () => {
+      if (!progressState.canClose) {
+        alert(i18n.t('parse.generatingTip'));
+        return;
+      }
+      hideProgressModal();
+    });
   }
 
   async function loadUser() {
