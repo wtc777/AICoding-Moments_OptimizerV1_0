@@ -26,3 +26,12 @@ public/uploads/
 
 # Local persistent data (SQLite etc.)
 data/
+*.db
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+
+# Local start scripts
+start.bat
+start.sh
