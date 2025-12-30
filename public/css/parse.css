@@ -40,3 +40,7 @@
 .progress-step.is-error .progress-step-dot {
   background-color: #f43f5e;
 }
+
+#resultContent.is-streaming {
+  white-space: pre-wrap;
+}

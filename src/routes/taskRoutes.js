@@ -1,5 +1,6 @@
 const express = require('express');
 const crypto = require('crypto');
+const { attachTaskStream, emitTaskDone, emitTaskError } = require('../services/taskStream');
 
 function createTaskRouter(taskStore, stepDefinitions) {
   const router = express.Router();
@@ -63,6 +64,36 @@ function createTaskRouter(taskStore, stepDefinitions) {
     } catch (err) {
       console.error('Get task status error:', err.message);
       res.status(500).json({ error: 'Failed to fetch task' });
+    }
+  });
+
+  router.get('/api/tasks/:id/stream', async (req, res) => {
+    try {
+      const task = await taskStore.getTaskById(req.params.id);
+      if (!task) {
+        return res.status(404).json({ error: 'Task not found' });
+      }
+      attachTaskStream(task.id, res);
+      if (task.status === 'FAILED') {
+        emitTaskError(task.id, task.error_message || 'Task failed');
+        return;
+      }
+      if (task.status === 'SUCCESS' && task.result_json) {
+        let parsedResult = null;
+        try {
+          parsedResult = JSON.parse(task.result_json);
+        } catch (parseErr) {
+          console.warn(`Failed to parse result_json for task ${task.id}:`, parseErr.message);
+        }
+        emitTaskDone(task.id, { result: parsedResult });
+      }
+    } catch (err) {
+      console.error('Task stream error:', err.message);
+      if (res.headersSent) {
+        res.end();
+        return;
+      }
+      res.status(500).json({ error: 'Failed to open stream' });
     }
   });
 

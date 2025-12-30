@@ -145,6 +145,31 @@ function readVisionSystemPrompt() {
   return DEFAULT_VISION_SYSTEM_PROMPT;
 }
 
+function normalizeContent(value) {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) {
+    return value
+      .map((part) => {
+        if (typeof part === 'string') return part;
+        if (part && typeof part === 'object' && typeof part.text === 'string') return part.text;
+        return '';
+      })
+      .filter(Boolean)
+      .join('\n');
+  }
+  if (value && typeof value === 'object' && typeof value.text === 'string') {
+    return value.text;
+  }
+  return '';
+}
+
+function extractDeltaText(payload) {
+  const choice = payload?.choices?.[0] || {};
+  const delta = choice?.delta?.content ?? choice?.message?.content ?? choice?.text ?? '';
+  return normalizeContent(delta);
+}
+
 async function callDashScopeChat(model, messages) {
   const url = `${BASE_URL}/chat/completions`;
   const response = await fetch(url, {
@@ -174,6 +199,100 @@ async function callDashScopeChat(model, messages) {
       total_tokens: result?.usage?.total_tokens ?? null
     }
   };
+}
+
+async function callDashScopeChatStream(model, messages, onDelta) {
+  const url = `${BASE_URL}/chat/completions`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${API_KEY}`
+    },
+    body: JSON.stringify({ model, messages, stream: true })
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    let errorMessage = 'Unexpected response from DashScope';
+    try {
+      const parsed = JSON.parse(errText);
+      errorMessage = parsed?.error?.message || errorMessage;
+    } catch (err) {
+      if (errText) errorMessage = errText.slice(0, 200);
+    }
+    throw new Error(errorMessage);
+  }
+
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('text/event-stream')) {
+    const result = await response.json();
+    const reply = normalizeContent(result?.choices?.[0]?.message?.content || '');
+    if (!reply) {
+      throw new Error('No reply content returned from DashScope.');
+    }
+    if (onDelta) onDelta(reply);
+    return {
+      reply,
+      usage: {
+        input_tokens: result?.usage?.input_tokens ?? null,
+        output_tokens: result?.usage?.output_tokens ?? null,
+        total_tokens: result?.usage?.total_tokens ?? null
+      }
+    };
+  }
+
+  return new Promise((resolve, reject) => {
+    let reply = '';
+    let usage = null;
+    let buffer = '';
+
+    const handleLinePayload = (data) => {
+      if (!data || data === '[DONE]') return;
+      let payload = null;
+      try {
+        payload = JSON.parse(data);
+      } catch (err) {
+        return;
+      }
+      const deltaText = extractDeltaText(payload);
+      if (deltaText) {
+        reply += deltaText;
+        if (onDelta) onDelta(deltaText);
+      }
+      if (payload?.usage) {
+        usage = payload.usage;
+      }
+    };
+
+    response.body.on('data', (chunk) => {
+      buffer += chunk.toString('utf8');
+      const parts = buffer.split('\n\n');
+      buffer = parts.pop() || '';
+      parts.forEach((part) => {
+        const lines = part.split('\n').filter(Boolean);
+        const dataLines = lines
+          .filter((line) => line.startsWith('data:'))
+          .map((line) => line.replace(/^data:\s*/, ''));
+        dataLines.forEach(handleLinePayload);
+      });
+    });
+
+    response.body.on('end', () => {
+      resolve({
+        reply: reply.trim(),
+        usage: {
+          input_tokens: usage?.input_tokens ?? null,
+          output_tokens: usage?.output_tokens ?? null,
+          total_tokens: usage?.total_tokens ?? null
+        }
+      });
+    });
+
+    response.body.on('error', (err) => {
+      reject(err);
+    });
+  });
 }
 
 async function saveThumbnailFromBase64(base64, userId) {
@@ -220,7 +339,7 @@ async function runImageModel({ imageBase64 }) {
   };
 }
 
-async function runTextModel({ combinedPrompt }) {
+async function runTextModel({ combinedPrompt, onDelta }) {
   const scenarioPrompt = readScenarioPrompt();
   const messages = [
     ...(scenarioPrompt
@@ -245,7 +364,9 @@ async function runTextModel({ combinedPrompt }) {
       content: [{ type: 'text', text: combinedPrompt }]
     }
   ];
-  const res = await callDashScopeChat(TEXT_MODEL, messages);
+  const res = onDelta
+    ? await callDashScopeChatStream(TEXT_MODEL, messages, onDelta)
+    : await callDashScopeChat(TEXT_MODEL, messages);
   return { reply: res.reply, usage: res.usage };
 }
 

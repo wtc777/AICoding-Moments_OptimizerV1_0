@@ -10,6 +10,11 @@
   let actionFeedbackTimer = null;
   let isSuperAdmin = false;
   let debugEnabled = false;
+  let streamAbortController = null;
+  let streamText = '';
+  let streamRenderPending = false;
+  let streamAutoScroll = true;
+  let streamStarted = false;
   const TASK_STEPS = [
     { id: 'imageProcessing', stepKey: 'image_processing', i18nKey: 'parse.progress.stepImageProcessing' },
     { id: 'visionCall', stepKey: 'image_model_call', i18nKey: 'parse.progress.stepVisionCall' },
@@ -152,6 +157,28 @@
     stopProgressTimer();
   }
 
+  function resetProgressState() {
+    stopProgressTimer();
+    stopPollTimer();
+    progressState.steps = TASK_STEPS.map((step) => ({
+      ...step,
+      status: 'pending',
+      elapsedMs: 0,
+      startedAt: null
+    }));
+    progressState.taskId = null;
+    progressState.canClose = false;
+    progressState.hasError = false;
+    if (dom.progressError) {
+      dom.progressError.textContent = '';
+      dom.progressError.classList.add('hidden');
+    }
+    if (dom.progressCloseBtn) {
+      dom.progressCloseBtn.disabled = true;
+      dom.progressCloseBtn.classList.remove('hidden');
+    }
+  }
+
   function renderProgressSteps() {
     if (!dom.progressList) return;
     const statusTextMap = {
@@ -267,6 +294,82 @@
     return 0;
   }
 
+  function syncProgressSteps(steps, serverTime) {
+    progressState.steps.forEach((uiStep) => {
+      const serverStep = steps.find((s) => s.stepKey === uiStep.stepKey);
+      if (!serverStep) return;
+      const elapsedMs = computeElapsedMs(serverStep, serverTime);
+      let status = 'pending';
+      if (serverStep.status === 'RUNNING') status = 'active';
+      else if (serverStep.status === 'SUCCESS') status = 'done';
+      else if (serverStep.status === 'FAILED') status = 'error';
+      uiStep.status = status;
+      uiStep.elapsedMs = elapsedMs;
+    });
+    renderProgressSteps();
+  }
+
+  function getStepLabel(stepKey, fallback) {
+    const match = TASK_STEPS.find((step) => step.stepKey === stepKey);
+    if (match?.i18nKey) {
+      return i18n.t(match.i18nKey);
+    }
+    return fallback || stepKey;
+  }
+
+  function renderProgressPreview(steps, serverTime) {
+    if (!dom.resultContent || !Array.isArray(steps)) return;
+    const statusTextMap = {
+      pending: i18n.t('parse.progress.status.pending'),
+      active: i18n.t('parse.progress.status.active'),
+      done: i18n.t('parse.progress.status.done'),
+      error: i18n.t('parse.progress.status.error')
+    };
+    const items = steps
+      .map((step) => {
+        const elapsedMs = computeElapsedMs(step, serverTime);
+        let status = 'pending';
+        if (step.status === 'RUNNING') status = 'active';
+        else if (step.status === 'SUCCESS') status = 'done';
+        else if (step.status === 'FAILED') status = 'error';
+        const statusLabel = statusTextMap[status] || statusTextMap.pending;
+        const timeLabel = i18n.t('parse.progress.time', { seconds: formatSeconds(elapsedMs) });
+        const title = getStepLabel(step.stepKey, step.stepLabel);
+        return `
+          <li class="flex items-center justify-between gap-3 rounded-2xl border border-gray-100 bg-white px-4 py-3">
+            <div class="flex items-center gap-3">
+              <span class="h-2.5 w-2.5 rounded-full ${
+                status === 'done'
+                  ? 'bg-emerald-500'
+                  : status === 'active'
+                    ? 'bg-blue-500'
+                    : status === 'error'
+                      ? 'bg-rose-500'
+                      : 'bg-gray-300'
+              }"></span>
+              <div>
+                <p class="text-sm font-semibold text-gray-900">${title}</p>
+                <p class="text-xs text-gray-500">${statusLabel}</p>
+              </div>
+            </div>
+            <div class="text-sm font-semibold text-gray-700 min-w-[96px] text-right">${timeLabel}</div>
+          </li>
+        `;
+      })
+      .join('');
+    dom.resultContent.innerHTML = `
+      <div class="space-y-3">
+        <p class="text-xs font-semibold uppercase tracking-[0.2em] text-blue-500">
+          ${i18n.t('parse.progressTitle')}
+        </p>
+        <ul class="space-y-2">${items}</ul>
+      </div>
+    `;
+    dom.resultContent.classList.remove('hidden');
+    dom.resultContent.classList.remove('is-streaming');
+    dom.resultPlaceholder.classList.add('hidden');
+  }
+
   async function fetchTaskStatus(taskId, baseText) {
     try {
       const data = await window.appCommon.authFetch(
@@ -277,17 +380,7 @@
       const { task, steps, serverTime } = data || {};
       if (!task || !Array.isArray(steps)) return;
 
-      progressState.steps.forEach((uiStep) => {
-        const serverStep = steps.find((s) => s.stepKey === uiStep.stepKey);
-        if (!serverStep) return;
-        const elapsedMs = computeElapsedMs(serverStep, serverTime);
-        let status = 'pending';
-        if (serverStep.status === 'RUNNING') status = 'active';
-        else if (serverStep.status === 'SUCCESS') status = 'done';
-        else if (serverStep.status === 'FAILED') status = 'error';
-        const delta = Math.max(0, elapsedMs - uiStep.elapsedMs);
-        setProgressStatus(uiStep.id, status, delta);
-      });
+      syncProgressSteps(steps, serverTime);
 
       const allDoneOrError = progressState.steps.every(
         (s) => s.status === 'done' || s.status === 'error'
@@ -328,6 +421,46 @@
     } catch (err) {
       console.error('Poll task error', err);
     }
+  }
+
+  async function fetchTaskSummary(taskId) {
+    return window.appCommon.authFetch(
+      `/api/tasks/${taskId}`,
+      { method: 'GET', headers: { Authorization: `Bearer ${window.appCommon.getToken()}` } },
+      { requireAuth: true }
+    );
+  }
+
+  async function showTaskSummary(taskId, errorMessage) {
+    resetProgressState();
+    try {
+      const data = await fetchTaskSummary(taskId);
+      const { task, steps, serverTime } = data || {};
+      if (Array.isArray(steps)) {
+        syncProgressSteps(steps, serverTime);
+      }
+      if (task?.status === 'FAILED') {
+        progressState.hasError = true;
+        if (dom.progressError) {
+          const fallback = i18n.t('common.requestFailed');
+          dom.progressError.textContent = i18n.t('parse.progress.error', {
+            message: task.errorMessage || errorMessage || fallback
+          });
+          dom.progressError.classList.remove('hidden');
+        }
+      }
+    } catch (err) {
+      if (dom.progressError) {
+        const fallback = i18n.t('common.requestFailed');
+        dom.progressError.textContent = i18n.t('parse.progress.error', {
+          message: errorMessage || err.message || fallback
+        });
+        dom.progressError.classList.remove('hidden');
+      }
+    }
+    progressState.canClose = true;
+    if (dom.progressCloseBtn) dom.progressCloseBtn.disabled = false;
+    renderProgressSteps();
   }
 
   function setProcessing(isProcessing) {
@@ -471,6 +604,106 @@
     dom.imageAnalysisEl.classList.toggle('hidden', !shouldShowAnalysis);
   }
 
+  function clearStreamState() {
+    streamText = '';
+    streamRenderPending = false;
+    streamStarted = false;
+    if (streamAbortController) {
+      streamAbortController.abort();
+      streamAbortController = null;
+    }
+  }
+
+  function renderStreamingText(text) {
+    const rendered = text ? marked.parse(text) : '';
+    dom.resultContent.innerHTML = rendered;
+    dom.resultContent.classList.remove('hidden');
+    dom.resultContent.classList.add('is-streaming');
+    dom.resultPlaceholder.classList.add('hidden');
+    if (streamAutoScroll) {
+      dom.resultContent.scrollIntoView({ block: 'end', behavior: 'auto' });
+    }
+  }
+
+  function appendStreamText(delta) {
+    if (!delta) return;
+    if (!streamStarted) {
+      streamStarted = true;
+      stopPollTimer();
+      dom.resultContent.innerHTML = '';
+      dom.resultContent.classList.add('is-streaming');
+    }
+    streamText += delta;
+    if (streamRenderPending) return;
+    streamRenderPending = true;
+    window.requestAnimationFrame(() => {
+      renderStreamingText(streamText);
+      streamRenderPending = false;
+    });
+  }
+
+  function parseSseEvent(raw) {
+    const lines = raw.split('\n').filter(Boolean);
+    let event = 'message';
+    const dataLines = [];
+    lines.forEach((line) => {
+      if (line.startsWith('event:')) {
+        event = line.replace('event:', '').trim();
+        return;
+      }
+      if (line.startsWith('data:')) {
+        dataLines.push(line.replace(/^data:\s*/, ''));
+      }
+    });
+    const data = dataLines.join('\n');
+    if (!data) return null;
+    let payload = null;
+    try {
+      payload = JSON.parse(data);
+    } catch (err) {
+      payload = { text: data };
+    }
+    return { event, payload };
+  }
+
+  async function streamTaskOutput(taskId) {
+    clearStreamState();
+    streamAutoScroll = true;
+    streamAbortController = new AbortController();
+    const res = await fetch(`/api/tasks/${taskId}/stream`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${window.appCommon.getToken()}` },
+      signal: streamAbortController.signal
+    });
+    if (!res.ok || !res.body) {
+      throw new Error('Stream request failed');
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+    let donePayload = null;
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split('\n\n');
+      buffer = parts.pop() || '';
+      parts.forEach((chunk) => {
+        const parsed = parseSseEvent(chunk);
+        if (!parsed) return;
+        if (parsed.event === 'token') {
+          appendStreamText(parsed.payload?.token || '');
+        } else if (parsed.event === 'done') {
+          donePayload = parsed.payload || null;
+        } else if (parsed.event === 'error') {
+          throw new Error(parsed.payload?.message || 'Stream error');
+        }
+      });
+    }
+    streamAbortController = null;
+    return donePayload;
+  }
+
   function updateDebugPanel(debugData) {
     if (!dom.debugPanel || !dom.debugContent) return;
     if (!isSuperAdmin) {
@@ -507,6 +740,7 @@
     dom.resultContent.innerHTML = rendered;
 
     dom.resultContent.classList.remove('hidden');
+    dom.resultContent.classList.remove('is-streaming');
     dom.resultPlaceholder.classList.add('hidden');
     if (dom.rawTextSection && dom.rawText) {
       dom.rawText.textContent = raw || i18n.t('parse.noRawText');
@@ -566,7 +800,11 @@
     dom.analyzeBtn.disabled = true;
     dom.analyzeBtn.classList.add('opacity-90', 'cursor-not-allowed');
     setStatus('parse.statusGenerating', 'gray');
-    startProgress();
+    resetProgressState();
+    clearStreamState();
+    resetRawState();
+    dom.imageAnalysisEl.classList.add('hidden');
+    renderStreamingText('');
     dom.analyzeLabel.innerHTML = `
       <svg class="w-5 h-5 text-blue-100 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v2m0 12v2m8-8h-2M6 12H4m12.364-6.364l-1.414 1.414M7.05 16.95l-1.414 1.414m12.728 0l-1.414-1.414M7.05 7.05L5.636 5.636" /></svg>
       ${i18n.t('parse.generating')}
@@ -604,8 +842,33 @@
       if (!taskId) throw new Error('Task id missing');
       progressState.taskId = taskId;
 
-      progressState.pollTimer = window.setInterval(() => fetchTaskStatus(taskId, baseText), 1000);
-      await fetchTaskStatus(taskId, baseText);
+      const firstSummary = await fetchTaskSummary(taskId);
+      if (firstSummary?.steps) {
+        renderProgressPreview(firstSummary.steps, firstSummary.serverTime);
+      }
+      progressState.pollTimer = window.setInterval(async () => {
+        if (streamStarted) return;
+        try {
+          const data = await fetchTaskSummary(taskId);
+          if (data?.steps) {
+            renderProgressPreview(data.steps, data.serverTime);
+          }
+        } catch (err) {
+          console.warn('Progress preview poll failed', err);
+        }
+      }, 1000);
+
+      const streamPayload = await streamTaskOutput(taskId);
+      const finalResult = streamPayload?.result || {};
+      const finalOutputText = finalResult.optimizedText || streamText;
+      const finalAnalysis = finalResult.visionSummary || '';
+      renderResult(finalOutputText, finalAnalysis);
+      setStatus('parse.statusGenerated', 'green');
+      dom.exportPreview.src = dom.previewImage.src;
+      dom.exportText.textContent = baseText || i18n.t('parse.noNotes');
+      dom.exportMarkdown.innerHTML = marked.parse(finalOutputText || '');
+      dom.exportDate.textContent = new Date().toLocaleDateString();
+      await showTaskSummary(taskId);
     } catch (err) {
       if (err.code === 'INSUFFICIENT_CREDITS') {
         alert(i18n.t('parse.alertCredits'));
@@ -617,7 +880,9 @@
       dom.resultPlaceholder.classList.add('hidden');
       dom.imageAnalysisEl.classList.add('hidden');
       resetRawState();
-      failProgress(err.message);
+      if (progressState.taskId) {
+        await showTaskSummary(progressState.taskId, err.message);
+      }
     } finally {
       dom.analyzeBtn.disabled = false;
       dom.analyzeBtn.classList.remove('opacity-90', 'cursor-not-allowed');
@@ -671,7 +936,9 @@
   function bindEvents() {
     console.log('[parse] bindEvents');
     if (dom.dropzone && dom.fileInput) {
-      dom.dropzone.addEventListener('click', () => dom.fileInput.click());
+      if (dom.dropzone.tagName !== 'LABEL') {
+        dom.dropzone.addEventListener('click', () => dom.fileInput.click());
+      }
       dom.dropzone.addEventListener('dragover', (e) => {
         e.preventDefault();
         dom.dropzone.classList.add('border-blue-400', 'bg-blue-50/40');
@@ -702,6 +969,7 @@
     if (dom.resetFileBtn) {
       dom.resetFileBtn.addEventListener('click', (e) => {
         e.stopPropagation();
+        e.preventDefault();
         resetPreview();
         setStatus('parse.statusPending', 'blue');
         dom.resultContent.classList.add('hidden');
@@ -723,6 +991,15 @@
         dom.imageAnalysisEl.classList.remove('hidden');
       }
     });
+
+    if (dom.resultContent) {
+      dom.resultContent.addEventListener('scroll', () => {
+        const nearBottom =
+          dom.resultContent.scrollTop + dom.resultContent.clientHeight >=
+          dom.resultContent.scrollHeight - 12;
+        streamAutoScroll = nearBottom;
+      });
+    }
 
     dom.logoutBtn?.addEventListener('click', () => {
       console.log('[parse] logout click');

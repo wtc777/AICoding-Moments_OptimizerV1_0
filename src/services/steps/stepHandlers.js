@@ -1,4 +1,5 @@
 const { runImageModel, runTextModel, finalizeAndPersist } = require('../../worker/taskLogic');
+const { emitTaskToken } = require('../taskStream');
 
 const defaultSteps = [
   { stepOrder: 1, stepKey: 'image_processing', stepLabel: 'Image processing' },
@@ -43,7 +44,10 @@ async function buildPromptStep(context) {
 }
 
 async function runTextModelCallStep(context) {
-  const { reply, usage } = await runTextModel({ combinedPrompt: context.prompt });
+  const { reply, usage } = await runTextModel({
+    combinedPrompt: context.prompt,
+    onDelta: (delta) => emitTaskToken(context.taskId, delta)
+  });
   return {
     updates: { textResult: reply, textUsage: usage },
     extra: { usage }

@@ -1,4 +1,5 @@
 const { buildStepHandlers } = require('../services/steps/stepHandlers');
+const { emitTaskDone, emitTaskError } = require('../services/taskStream');
 
 function safeParse(jsonStr) {
   if (!jsonStr) return null;
@@ -18,13 +19,15 @@ function startTaskWorker(taskStore, options = {}) {
   setInterval(async () => {
     if (isRunning) return;
     isRunning = true;
+    let task = null;
     try {
-      const task = await taskStore.findNextRunnableTask();
+      task = await taskStore.findNextRunnableTask();
       if (!task) return;
 
       const steps = await taskStore.getTaskSteps(task.id);
       if (!steps || steps.length === 0) {
         await taskStore.upsertTaskError(task.id, 'No steps defined for task');
+        emitTaskError(task.id, 'No steps defined for task');
         return;
       }
 
@@ -44,6 +47,7 @@ function startTaskWorker(taskStore, options = {}) {
           console.error(`[TaskWorker] Missing handler for step ${step.step_key}`);
           await taskStore.markStepFailed(step.id, { error: 'Handler missing' });
           await taskStore.upsertTaskError(task.id, `Handler missing for ${step.step_key}`);
+          emitTaskError(task.id, `Handler missing for ${step.step_key}`);
           return;
         }
         await taskStore.markStepRunning(step.id);
@@ -57,6 +61,7 @@ function startTaskWorker(taskStore, options = {}) {
           console.error(`[TaskWorker] Step ${step.step_key} failed:`, err.message);
           await taskStore.markStepFailed(step.id, { error: err.message || 'Step failed' });
           await taskStore.upsertTaskError(task.id, err.message || 'Step failed');
+          emitTaskError(task.id, err.message || 'Step failed');
           return;
         }
       }
@@ -70,8 +75,12 @@ function startTaskWorker(taskStore, options = {}) {
           payload: context.payload || {}
         };
       await taskStore.updateTaskResult(task.id, JSON.stringify(finalResult));
+      emitTaskDone(task.id, { result: finalResult });
     } catch (err) {
       console.error('[TaskWorker] Loop error:', err.message);
+      if (task?.id) {
+        emitTaskError(task.id, err.message || 'Task failed');
+      }
     } finally {
       isRunning = false;
     }
